@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MiRutina">
+<title>MiRutina</title>
+<script>
+// ── INLINE MANIFEST (para PWABuilder sin servidor) ──
+const manifestData = {
+  name: "MiRutina — Entrenamiento en Casa",
+  short_name: "MiRutina",
+  description: "Tu tracker de entrenamiento personal",
+  start_url: "./",
+  display: "standalone",
+  background_color: "#0f0f14",
+  theme_color: "#0f0f14",
+  orientation: "portrait",
+  icons: [{
+    src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAABmJLR0QA/wD/AP+gvaeTAAAC6ElEQVR4nO3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBuAABHgAAAABJRU5ErkJggg==",
+    sizes: "192x192",
+    type: "image/png",
+    purpose: "any maskable"
+  }]
+};
+const blob = new Blob([JSON.stringify(manifestData)], {type: 'application/json'});
+const manifestURL = URL.createObjectURL(blob);
+const link = document.createElement('link');
+link.rel = 'manifest';
+link.href = manifestURL;
+document.currentScript.insertAdjacentElement('afterend', link);
+
+// ── SERVICE WORKER INLINE ──
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'mirutina-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('/'))));
+    });
+  `;
+  const swBlob = new Blob([swCode], {type: 'application/javascript'});
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(() => {});
+}
+</script>
+<style>
+  :root {
+    --bg: #0f0f14;
+    --bg2: #16161f;
+    --bg3: #1e1e2a;
+    --border: rgba(255,255,255,0.07);
+    --text: #f0f0f8;
+    --text2: #9090a8;
+    --text3: #5a5a72;
+    --red: #e94560;
+    --blue: #3b82f6;
+    --green: #10b981;
+    --purple: #8b5cf6;
+    --amber: #f59e0b;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --nav-h: 68px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+
+  /* LAYOUT */
+  #app { height: 100vh; display: flex; flex-direction: column; }
+  .screen { flex: 1; overflow-y: auto; padding-bottom: calc(var(--nav-h) + 12px); display: none; }
+  .screen.active { display: block; }
+  .screen::-webkit-scrollbar { display: none; }
+
+  /* NAV */
+  nav { height: var(--nav-h); background: var(--bg2); border-top: 1px solid var(--border); display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+  nav button { flex: 1; background: none; border: none; color: var(--text3); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; cursor: pointer; transition: color 0.2s; }
+  nav button.active { color: var(--text); }
+  nav button .icon { font-size: 22px; line-height: 1; }
+  nav button .dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0; transition: opacity 0.2s; margin-top: -2px; }
+  nav button.active .dot { opacity: 1; }
+
+  /* HEADER */
+  .hdr { padding: 20px 20px 12px; display: flex; align-items: center; justify-content: space-between; }
+  .hdr h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .hdr-sub { font-size: 13px; color: var(--text2); margin-top: 1px; }
+  .hdr-btn { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+  /* ── CALENDAR SCREEN ── */
+  .month-nav { display: flex; align-items: center; justify-content: space-between; padding: 0 20px 16px; }
+  .month-name { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .month-arrows { display: flex; gap: 8px; }
+  .arrow-btn { width: 36px; height: 36px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); padding: 0 16px; margin-bottom: 4px; }
+  .weekday-label { text-align: center; font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 0; }
+
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); padding: 0 16px; gap: 4px; }
+  .cal-day { aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; border: 1px solid transparent; transition: background 0.15s; }
+  .cal-day:empty { background: none; cursor: default; }
+  .cal-day.other-month { opacity: 0.25; }
+  .cal-day.today .day-num { background: rgba(255,255,255,0.12); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+  .day-num { font-size: 15px; font-weight: 600; }
+  .day-dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 3px; }
+  .cal-day.has-workout .day-dot { display: block; }
+  .cal-day.done { border-color: var(--border); }
+  .cal-day.done::after { content: '✓'; position: absolute; top: 3px; right: 5px; font-size: 8px; font-weight: 900; opacity: 0.7; }
+  .cal-day.weekend-measure .day-dot { background: #6ee7b7; }
+  .cal-day:active { opacity: 0.7; }
+
+  /* week strip below calendar */
+  .week-progress { margin: 16px 20px; background: var(--bg2); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); }
+  .week-label { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .week-pills { display: flex; gap: 6px; }
+  .week-pill { flex: 1; height: 6px; border-radius: 3px; background: var(--bg3); }
+  .week-pill.done { }
+
+  /* legend */
+  .cal-legend { display: flex; gap: 16px; padding: 0 20px 20px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── WORKOUT MODAL ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; display: none; align-items: flex-end; backdrop-filter: blur(4px); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg2); border-radius: 24px 24px 0 0; width: 100%; max-height: 92vh; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+  .modal-handle { width: 40px; height: 4px; background: var(--bg3); border-radius: 2px; margin: 12px auto 0; flex-shrink: 0; }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-size: 20px; font-weight: 800; }
+  .modal-subtitle { font-size: 13px; color: var(--text2); margin-top: 2px; }
+  .modal-close { width: 32px; height: 32px; border-radius: 50%; background: var(--bg3); border: none; color: var(--text2); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .modal-body { overflow-y: auto; padding: 16px 20px; flex: 1; }
+  .modal-body::-webkit-scrollbar { display: none; }
+  .modal-footer { padding: 16px 20px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); flex-shrink: 0; }
+
+  /* exercise cards */
+  .cat-label { font-size: 11px; font-weight: 800; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin: 16px 0 8px; }
+  .cat-label:first-child { margin-top: 0; }
+  .exercise-card { background: var(--bg3); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 8px; border: 1px solid var(--border); }
+  .ex-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .ex-name { font-size: 15px; font-weight: 700; line-height: 1.3; }
+  .ex-equip { font-size: 11px; color: var(--text3); margin-top: 3px; }
+  .ex-meta { text-align: right; flex-shrink: 0; }
+  .ex-sets { font-size: 22px; font-weight: 900; line-height: 1; }
+  .ex-reps { font-size: 11px; color: var(--text2); }
+  .ex-tip { font-size: 12px; color: var(--text2); line-height: 1.5; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .ex-muscles { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .muscle-tag { font-size: 10px; background: rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 20px; color: var(--text3); }
+  .ex-log { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .ex-log-title { font-size: 11px; font-weight: 700; color: var(--text2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sets-log { display: flex; gap: 8px; flex-wrap: wrap; }
+  .set-input-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .set-num { font-size: 10px; color: var(--text3); font-weight: 700; }
+  .set-input { width: 56px; height: 40px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; font-weight: 700; text-align: center; outline: none; }
+  .set-input:focus { border-color: rgba(255,255,255,0.25); }
+  .set-input::placeholder { color: var(--text3); }
+  .video-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text3); text-decoration: none; margin-top: 8px; }
+  .video-link:hover { color: var(--text2); }
+
+  .done-btn { width: 100%; padding: 15px; border-radius: var(--radius-sm); border: none; font-size: 16px; font-weight: 800; cursor: pointer; letter-spacing: 0.02em; transition: opacity 0.2s; }
+  .done-btn:active { opacity: 0.8; }
+
+  /* ── MEASURES MODAL ── */
+  .measure-form { padding: 8px 0; }
+  .measure-row { display: flex; align-items: center; margin-bottom: 12px; }
+  .measure-label { flex: 1; font-size: 15px; font-weight: 600; }
+  .measure-unit { font-size: 13px; color: var(--text3); margin-right: 8px; }
+  .measure-input { width: 90px; height: 44px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 18px; font-weight: 700; text-align: center; outline: none; }
+  .measure-input:focus { border-color: rgba(255,255,255,0.3); }
+
+  /* ── HISTORY SCREEN ── */
+  .hist-section { padding: 0 20px 20px; }
+  .hist-month-label { font-size: 13px; font-weight: 800; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; margin-top: 20px; }
+  .hist-card { background: var(--bg2); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 8px; border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; gap: 14px; }
+  .hist-card:active { opacity: 0.7; }
+  .hist-color { width: 4px; border-radius: 2px; align-self: stretch; min-height: 40px; flex-shrink: 0; }
+  .hist-info { flex: 1; }
+  .hist-date { font-size: 13px; color: var(--text2); margin-bottom: 2px; }
+  .hist-name { font-size: 16px; font-weight: 700; }
+  .hist-detail { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .hist-arrow { color: var(--text3); font-size: 14px; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-text { font-size: 15px; }
+
+  /* ── STATS SCREEN ── */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 20px 20px; }
+  .stat-card { background: var(--bg2); border-radius: var(--radius-sm); padding: 16px; border: 1px solid var(--border); }
+  .stat-label { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .stat-value { font-size: 28px; font-weight: 900; line-height: 1; }
+  .stat-unit { font-size: 13px; color: var(--text2); font-weight: 400; margin-left: 2px; }
+  .stat-trend { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .stat-trend.up { color: #10b981; }
+  .stat-trend.down { color: #e94560; }
+
+  .measure-history { margin: 0 20px 20px; }
+  .measure-hist-title { font-size: 13px; font-weight: 800; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+  .measure-hist-row { background: var(--bg2); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 8px; border: 1px solid var(--border); }
+  .measure-hist-date { font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+  .measure-hist-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .measure-hist-item { }
+  .measure-hist-label { font-size: 10px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+  .measure-hist-val { font-size: 16px; font-weight: 800; margin-top: 2px; }
+
+  /* Scrollbar */
+  * { scrollbar-width: none; }
+
+  /* Animations */
+  .modal { animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  /* Streak */
+  .streak-banner { margin: 0 20px 16px; background: linear-gradient(135deg, #f59e0b22, #e9456022); border: 1px solid #f59e0b44; border-radius: var(--radius-sm); padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+  .streak-num { font-size: 32px; font-weight: 900; color: var(--amber); line-height: 1; }
+  .streak-text { font-size: 13px; color: var(--text2); line-height: 1.4; }
+  .streak-fire { font-size: 28px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- SCREENS -->
+  <div class="screen active" id="screen-cal">
+    <div class="hdr">
+      <div>
+        <div class="hdr h1" style="font-size:26px;font-weight:800;letter-spacing:-0.5px" id="hdr-title">MiRutina</div>
+        <div class="hdr-sub" id="hdr-sub">Tu entrenamiento semanal</div>
+      </div>
+    </div>
+    <div class="month-nav">
+      <div class="month-name" id="month-name"></div>
+      <div class="month-arrows">
+        <button class="arrow-btn" onclick="changeMonth(-1)">‹</button>
+        <button class="arrow-btn" onclick="changeMonth(1)">›</button>
+      </div>
+    </div>
+    <div class="weekdays">
+      <div class="weekday-label">Dom</div>
+      <div class="weekday-label">Lun</div>
+      <div class="weekday-label">Mar</div>
+      <div class="weekday-label">Mié</div>
+      <div class="weekday-label">Jue</div>
+      <div class="weekday-label">Vie</div>
+      <div class="weekday-label">Sáb</div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-legend" style="margin-top:12px">
+      <div class="legend-item"><div class="legend-dot" style="background:#e94560"></div>Lun · Empuje</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Mar · Jale</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div>Mié · Piernas</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Jue · Jale</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Vie · Empuje</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6ee7b7"></div>Fin · Medidas</div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-hist">
+    <div class="hdr"><div><div style="font-size:26px;font-weight:800;letter-spacing:-0.5px">Historial</div><div class="hdr-sub">Todos tus entrenamientos</div></div></div>
+    <div id="hist-content"></div>
+  </div>
+
+  <div class="screen" id="screen-stats">
+    <div class="hdr"><div><div style="font-size:26px;font-weight:800;letter-spacing:-0.5px">Progreso</div><div class="hdr-sub">Tus métricas y avances</div></div></div>
+    <div id="stats-content"></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav>
+    <button class="active" onclick="showScreen('cal')" id="nav-cal">
+      <span class="icon">📅</span>
+      <span>Inicio</span>
+      <div class="dot"></div>
+    </button>
+    <button onclick="showScreen('hist')" id="nav-hist">
+      <span class="icon">📖</span>
+      <span>Historial</span>
+      <div class="dot"></div>
+    </button>
+    <button onclick="showScreen('stats')" id="nav-stats">
+      <span class="icon">📊</span>
+      <span>Progreso</span>
+      <div class="dot"></div>
+    </button>
+  </nav>
+</div>
+
+<!-- WORKOUT MODAL -->
+<div class="modal-overlay" id="workout-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="wm-title"></div>
+        <div class="modal-subtitle" id="wm-subtitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('workout-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="wm-body"></div>
+    <div class="modal-footer">
+      <button class="done-btn" id="wm-done-btn" onclick="markWorkoutDone()">✓ Marcar como completado</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEASURES MODAL -->
+<div class="modal-overlay" id="measures-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="mm-title">📏 Mis Medidas</div>
+        <div class="modal-subtitle" id="mm-subtitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('measures-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="measure-form" id="mm-form"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="done-btn" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff" onclick="saveMeasures()">💾 Guardar medidas</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY DETAIL MODAL -->
+<div class="modal-overlay" id="hist-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="hm-title"></div>
+        <div class="modal-subtitle" id="hm-subtitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('hist-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="hm-body"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════
+const WORKOUT_DAYS = [
+  {
+    id: 1, day: "Lunes", title: "Empuje",
+    subtitle: "Pecho · Hombros · Tríceps · Core",
+    color: "#e94560", gradient: "linear-gradient(135deg, #e94560, #c0392b)",
+    exercises: [
+      { id:"1-1", category:"Pecho 🫀", name:"Press de pecho en el suelo", equipment:"Barra ~10kg", sets:3, reps:"10-12", tip:"Acuéstate boca arriba, codos a 45°. Baja hasta que los codos toquen el suelo y empuja explosivo. El rango limitado es normal en el suelo.", muscles:["Pectoral mayor","Tríceps","Deltoides frontal"], videoUrl:"https://www.youtube.com/results?search_query=press+pecho+suelo+barra" },
+      { id:"1-2", category:"Pecho 🫀", name:"Aperturas en el suelo", equipment:"4-5kg cada mancuerna", sets:3, reps:"12-15", tip:"Brazos ligeramente doblados, baja en arco hasta el suelo y sube como si abrazaras un árbol. Siente el estiramiento en el pecho.", muscles:["Pectoral mayor","Deltoides frontal"], videoUrl:"https://www.youtube.com/results?search_query=aperturas+pecho+suelo+mancuernas" },
+      { id:"1-3", category:"Hombros 🔝", name:"Press militar sentado", equipment:"5-6kg cada mancuerna", sets:3, reps:"10-12", tip:"Siéntate recta, empuja las mancuernas arriba sin arquear la espalda. Baja hasta que los codos queden a 90°.", muscles:["Deltoides","Tríceps","Trapecio"], videoUrl:"https://www.youtube.com/results?search_query=press+militar+sentado+mancuernas" },
+      { id:"1-4", category:"Hombros 🔝", name:"Elevaciones laterales", equipment:"2-3kg cada mancuerna", sets:3, reps:"12-15", tip:"De pie, sube los brazos a los lados hasta altura del hombro con codos ligeramente doblados. Sin impulso, movimiento controlado.", muscles:["Deltoides lateral"], videoUrl:"https://www.youtube.com/results?search_query=elevaciones+laterales+mancuernas" },
+      { id:"1-5", category:"Hombros 🔝", name:"Elevaciones frontales", equipment:"2-3kg cada mancuerna", sets:3, reps:"12-15", tip:"De pie, sube los brazos al frente alternando hasta altura del hombro. Mantén el core apretado y sin balancearte.", muscles:["Deltoides frontal"], videoUrl:"https://www.youtube.com/results?search_query=elevaciones+frontales+mancuernas" },
+      { id:"1-6", category:"Tríceps 💪", name:"Press francés en el suelo", equipment:"Barra ~8kg", sets:3, reps:"10-12", tip:"Acostada, baja la barra hacia la frente doblando solo los codos y extiende. Solo se mueven los antebrazos, no los codos.", muscles:["Tríceps cabeza larga"], videoUrl:"https://www.youtube.com/results?search_query=press+frances+suelo+barra" },
+      { id:"1-7", category:"Tríceps 💪", name:"Fondos entre sillas", equipment:"2 sillas", sets:3, reps:"8-12", tip:"Manos en el borde de una silla atrás, pies en otra. Baja doblando los codos a 90° y empuja. Cuerpo cerca de la silla.", muscles:["Tríceps","Deltoides","Pectoral"], videoUrl:"https://www.youtube.com/results?search_query=fondos+triceps+sillas+casa" },
+      { id:"1-8", category:"Core 🔥", name:"Plancha", equipment:"Suelo", sets:3, reps:"30 seg", tip:"Cuerpo recto como tabla. No dejes caer las caderas ni subas el trasero. Aprieta glúteos y abdomen. Respira normal.", muscles:["Core completo","Glúteos","Hombros"], videoUrl:"https://www.youtube.com/results?search_query=plancha+abdominal+correcta" },
+      { id:"1-9", category:"Core 🔥", name:"Crunches", equipment:"Suelo", sets:3, reps:"15-20", tip:"No jales el cuello. Sube solo los hombros del suelo, exhala al subir. Movimiento pequeño y controlado.", muscles:["Recto abdominal"], videoUrl:"https://www.youtube.com/results?search_query=crunches+abdominales+correctos" },
+      { id:"1-10", category:"Core 🔥", name:"Elevaciones de piernas", equipment:"Suelo", sets:3, reps:"12-15", tip:"Acostada, espalda pegada al suelo. Sube las piernas rectas a 90° y baja lento sin tocar el suelo.", muscles:["Recto abdominal inferior","Flexores de cadera"], videoUrl:"https://www.youtube.com/results?search_query=elevaciones+piernas+suelo+abdomen" },
+    ]
+  },
+  {
+    id: 2, day: "Martes", title: "Jale",
+    subtitle: "Espalda · Bíceps",
+    color: "#3b82f6", gradient: "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+    exercises: [
+      { id:"2-1", category:"Espalda 🔙", name:"Remo con mancuerna un brazo", equipment:"8-10kg mancuerna", sets:4, reps:"10-12", tip:"Apoya una mano y rodilla en la silla. Jala la mancuerna hacia la cadera como si arrancaras un motor. El codo sube pegado al cuerpo.", muscles:["Dorsal ancho","Romboides","Bíceps"], videoUrl:"https://www.youtube.com/results?search_query=remo+mancuerna+un+brazo+tecnica" },
+      { id:"2-2", category:"Espalda 🔙", name:"Remo con barra inclinado", equipment:"Barra ~12kg", sets:3, reps:"10-12", tip:"Inclínate 45° con la espalda recta, jala la barra hacia el ombligo. No redondees la espalda. Es el ejercicio rey de espalda con barra.", muscles:["Dorsal ancho","Romboides","Trapecio medio","Bíceps"], videoUrl:"https://www.youtube.com/results?search_query=remo+barra+inclinado+tecnica" },
+      { id:"2-3", category:"Espalda 🔙", name:"Remo al mentón", equipment:"Barra ~8kg", sets:3, reps:"12-15", tip:"De pie, sube la barra por el cuerpo hasta el mentón con los codos más altos que las manos. Trabaja hombros y parte alta de espalda.", muscles:["Trapecio","Deltoides lateral","Bíceps"], videoUrl:"https://www.youtube.com/results?search_query=remo+al+menton+barra+tecnica" },
+      { id:"2-4", category:"Espalda 🔙", name:"Buenos días", equipment:"Barra ~8kg en hombros", sets:3, reps:"12-15", tip:"Barra en los hombros, pies al ancho de caderas. Inclínate hacia adelante con la espalda recta hasta 45° y sube. Trabaja lumbar e isquiotibiales.", muscles:["Lumbar","Isquiotibiales","Glúteos"], videoUrl:"https://www.youtube.com/results?search_query=buenos+dias+ejercicio+barra+tecnica" },
+      { id:"2-5", category:"Bíceps 💪", name:"Curl de bíceps con barra", equipment:"Barra ~10kg", sets:3, reps:"10-12", tip:"De pie, codos pegados al cuerpo, sube la barra doblando solo los codos. Baja lento — la fase de bajada también construye músculo.", muscles:["Bíceps braquial","Braquiorradial"], videoUrl:"https://www.youtube.com/results?search_query=curl+biceps+barra+tecnica" },
+      { id:"2-6", category:"Bíceps 💪", name:"Curl martillo con mancuernas", equipment:"5-6kg cada mancuerna", sets:3, reps:"12-15", tip:"Agarre neutro (pulgares arriba), sube alternando. Este agarre trabaja el músculo braquial que da grosor al brazo.", muscles:["Bíceps braquial","Braquial","Braquiorradial"], videoUrl:"https://www.youtube.com/results?search_query=curl+martillo+mancuernas+tecnica" },
+      { id:"2-7", category:"Bíceps 💪", name:"Curl concentrado sentado", equipment:"6-8kg mancuerna", sets:3, reps:"12-15", tip:"Sentada, codo apoyado en el muslo interior. Sube la mancuerna concentrándote en el bíceps. Aísla perfectamente el músculo.", muscles:["Bíceps braquial pico"], videoUrl:"https://www.youtube.com/results?search_query=curl+concentrado+sentado+mancuerna" },
+    ]
+  },
+  {
+    id: 3, day: "Miércoles", title: "Piernas",
+    subtitle: "Cuádriceps · Isquiotibiales · Glúteos · Core",
+    color: "#10b981", gradient: "linear-gradient(135deg, #10b981, #059669)",
+    exercises: [
+      { id:"3-1", category:"Cuádriceps 🦵", name:"Sentadilla con barra", equipment:"Barra ~15kg", sets:4, reps:"10-12", tip:"Pies al ancho de hombros, barra en trapecios. Baja como si fueras a sentarte, rodillas siguen la dirección de los pies. El ejercicio más efectivo para piernas.", muscles:["Cuádriceps","Glúteos","Core"], videoUrl:"https://www.youtube.com/results?search_query=sentadilla+barra+tecnica+correcta" },
+      { id:"3-2", category:"Cuádriceps 🦵", name:"Zancadas con mancuernas", equipment:"5-6kg cada mancuerna", sets:3, reps:"10 cada pierna", tip:"Da un paso al frente, baja la rodilla trasera sin tocar el suelo. Mantén el torso recto. Alterna piernas.", muscles:["Cuádriceps","Glúteos","Isquiotibiales"], videoUrl:"https://www.youtube.com/results?search_query=zancadas+mancuernas+tecnica" },
+      { id:"3-3", category:"Cuádriceps 🦵", name:"Sentadilla sumo con mancuerna", equipment:"Una mancuerna 8-10kg", sets:3, reps:"12-15", tip:"Pies más separados que los hombros, puntas hacia afuera. Sujeta una mancuerna entre las piernas y baja. Activa más glúteos e isquiotibiales.", muscles:["Glúteos","Aductores","Cuádriceps"], videoUrl:"https://www.youtube.com/results?search_query=sentadilla+sumo+mancuerna+tecnica" },
+      { id:"3-4", category:"Isquiotibiales 🦵", name:"Peso muerto rumano", equipment:"Barra ~12kg", sets:3, reps:"10-12", tip:"Pies al ancho de caderas, baja la barra por las piernas con rodillas ligeramente dobladas. Siente el estiramiento en la parte trasera del muslo.", muscles:["Isquiotibiales","Glúteos","Lumbar"], videoUrl:"https://www.youtube.com/results?search_query=peso+muerto+rumano+tecnica+correcta" },
+      { id:"3-5", category:"Glúteos 🍑", name:"Puente de glúteos", equipment:"Barra ~10kg sobre caderas", sets:4, reps:"15-20", tip:"Acostada, pies apoyados, sube las caderas apretando glúteos en la parte alta. Con barra sobre las caderas aumentas la resistencia.", muscles:["Glúteos","Isquiotibiales","Core"], videoUrl:"https://www.youtube.com/results?search_query=puente+gluteos+barra+tecnica" },
+      { id:"3-6", category:"Glúteos 🍑", name:"Patada trasera de pie", equipment:"Tobillera con disco 1.25kg (opcional)", sets:3, reps:"15 cada pierna", tip:"De pie apoyada en la silla, extiende una pierna hacia atrás apretando el glúteo. Movimiento controlado, no uses impulso.", muscles:["Glúteo mayor","Isquiotibiales"], videoUrl:"https://www.youtube.com/results?search_query=patada+trasera+gluteo+pie+tecnica" },
+      { id:"3-7", category:"Core 🔥", name:"Plancha lateral", equipment:"Suelo", sets:3, reps:"25 seg cada lado", tip:"Apóyate en un codo y el borde del pie. Cuerpo recto, caderas arriba. Trabaja el core lateral que protege la columna.", muscles:["Oblicuos","Core lateral","Glúteos"], videoUrl:"https://www.youtube.com/results?search_query=plancha+lateral+tecnica+correcta" },
+      { id:"3-8", category:"Core 🔥", name:"Bicicleta abdominal", equipment:"Suelo", sets:3, reps:"20 alternados", tip:"Acostada, manos detrás de la cabeza. Lleva codo derecho a rodilla izquierda alternando. Estudios la señalan como uno de los mejores ejercicios de core.", muscles:["Recto abdominal","Oblicuos"], videoUrl:"https://www.youtube.com/results?search_query=bicicleta+abdominal+tecnica" },
+    ]
+  },
+  {
+    id: 4, day: "Jueves", title: "Jale",
+    subtitle: "Espalda · Bíceps",
+    color: "#8b5cf6", gradient: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
+    exercises: [
+      { id:"4-1", category:"Espalda 🔙", name:"Remo con mancuerna un brazo", equipment:"8-10kg mancuerna", sets:4, reps:"10-12", tip:"Apoya una mano y rodilla en la silla. Jala la mancuerna hacia la cadera como si arrancaras un motor. El codo sube pegado al cuerpo.", muscles:["Dorsal ancho","Romboides","Bíceps"], videoUrl:"https://www.youtube.com/results?search_query=remo+mancuerna+un+brazo+tecnica" },
+      { id:"4-2", category:"Espalda 🔙", name:"Remo con barra inclinado", equipment:"Barra ~12kg", sets:3, reps:"10-12", tip:"Inclínate 45° con la espalda recta, jala la barra hacia el ombligo. No redondees la espalda.", muscles:["Dorsal ancho","Romboides","Trapecio medio","Bíceps"], videoUrl:"https://www.youtube.com/results?search_query=remo+barra+inclinado+tecnica" },
+      { id:"4-3", category:"Espalda 🔙", name:"Pullover con mancuerna", equipment:"8-10kg mancuerna", sets:3, reps:"12-15", tip:"Acostada, sujeta una mancuerna con ambas manos sobre el pecho. Baja detrás de la cabeza con codos ligeramente doblados y regresa. Expande la caja torácica.", muscles:["Dorsal ancho","Pectoral mayor","Serrato"], videoUrl:"https://www.youtube.com/results?search_query=pullover+mancuerna+suelo+tecnica" },
+      { id:"4-4", category:"Espalda 🔙", name:"Encogimientos de hombros", equipment:"Mancuernas 8-10kg cada una", sets:3, reps:"15-20", tip:"De pie, sube los hombros hacia las orejas y baja controlado. No gires los hombros. Trabaja el trapecio superior.", muscles:["Trapecio superior","Elevador de la escápula"], videoUrl:"https://www.youtube.com/results?search_query=encogimientos+hombros+mancuernas+tecnica" },
+      { id:"4-5", category:"Bíceps 💪", name:"Curl de bíceps con barra", equipment:"Barra ~10kg", sets:3, reps:"10-12", tip:"De pie, codos pegados al cuerpo, sube la barra doblando solo los codos. Baja lento — la fase negativa también construye músculo.", muscles:["Bíceps braquial","Braquiorradial"], videoUrl:"https://www.youtube.com/results?search_query=curl+biceps+barra+tecnica" },
+      { id:"4-6", category:"Bíceps 💪", name:"Curl alternado con mancuernas", equipment:"5-6kg cada mancuerna", sets:3, reps:"12 cada brazo", tip:"De pie o sentada, alterna brazos. Al subir, gira la muñeca para que la palma quede hacia arriba al final del movimiento.", muscles:["Bíceps braquial","Braquial"], videoUrl:"https://www.youtube.com/results?search_query=curl+alternado+mancuernas+tecnica" },
+    ]
+  },
+  {
+    id: 5, day: "Viernes", title: "Empuje",
+    subtitle: "Pecho · Hombros · Tríceps · Core",
+    color: "#f59e0b", gradient: "linear-gradient(135deg, #f59e0b, #d97706)",
+    exercises: [
+      { id:"5-1", category:"Pecho 🫀", name:"Press de pecho en el suelo", equipment:"Barra ~10kg", sets:3, reps:"10-12", tip:"Acuéstate boca arriba, codos a 45°. Baja hasta que los codos toquen el suelo y empuja explosivo.", muscles:["Pectoral mayor","Tríceps","Deltoides frontal"], videoUrl:"https://www.youtube.com/results?search_query=press+pecho+suelo+barra" },
+      { id:"5-2", category:"Pecho 🫀", name:"Flexiones de pecho", equipment:"Peso corporal", sets:3, reps:"10-15", tip:"Manos un poco más anchas que los hombros, cuerpo recto. Baja hasta casi tocar el suelo. Son el complemento perfecto al press.", muscles:["Pectoral mayor","Tríceps","Core"], videoUrl:"https://www.youtube.com/results?search_query=flexiones+pecho+tecnica+correcta" },
+      { id:"5-3", category:"Hombros 🔝", name:"Press Arnold sentado", equipment:"5-6kg cada mancuerna", sets:3, reps:"10-12", tip:"Empieza con palmas hacia ti, al subir gira hasta que queden hacia afuera. Trabaja las 3 cabezas del deltoides en un solo movimiento.", muscles:["Deltoides completo","Tríceps"], videoUrl:"https://www.youtube.com/results?search_query=press+arnold+sentado+tecnica" },
+      { id:"5-4", category:"Hombros 🔝", name:"Elevaciones laterales", equipment:"2-3kg cada mancuerna", sets:3, reps:"15", tip:"De pie, sube los brazos a los lados hasta altura del hombro con codos ligeramente doblados. Sin impulso.", muscles:["Deltoides lateral"], videoUrl:"https://www.youtube.com/results?search_query=elevaciones+laterales+mancuernas" },
+      { id:"5-5", category:"Tríceps 💪", name:"Extensión de tríceps sobre cabeza", equipment:"Una mancuerna 6-8kg", sets:3, reps:"12-15", tip:"De pie o sentada, sujeta una mancuerna con ambas manos sobre la cabeza. Baja detrás de la nuca doblando los codos y extiende.", muscles:["Tríceps cabeza larga"], videoUrl:"https://www.youtube.com/results?search_query=extension+triceps+cabeza+mancuerna+tecnica" },
+      { id:"5-6", category:"Tríceps 💪", name:"Fondos entre sillas", equipment:"2 sillas", sets:3, reps:"10-12", tip:"Manos en el borde de una silla atrás, pies en otra. Baja doblando los codos a 90° y empuja. Cuerpo cerca de la silla.", muscles:["Tríceps","Deltoides","Pectoral"], videoUrl:"https://www.youtube.com/results?search_query=fondos+triceps+sillas+casa" },
+      { id:"5-7", category:"Core 🔥", name:"Plancha", equipment:"Suelo", sets:3, reps:"35 seg", tip:"Cuerpo recto como tabla. No dejes caer las caderas ni subas el trasero. Aprieta glúteos y abdomen.", muscles:["Core completo","Glúteos","Hombros"], videoUrl:"https://www.youtube.com/results?search_query=plancha+abdominal+correcta" },
+      { id:"5-8", category:"Core 🔥", name:"Plancha lateral", equipment:"Suelo", sets:3, reps:"25 seg cada lado", tip:"Apóyate en un codo y el borde del pie. Cuerpo recto, caderas arriba. Trabaja el core lateral.", muscles:["Oblicuos","Core lateral"], videoUrl:"https://www.youtube.com/results?search_query=plancha+lateral+tecnica+correcta" },
+      { id:"5-9", category:"Core 🔥", name:"Mountain climbers", equipment:"Suelo", sets:3, reps:"20 alternados", tip:"En posición de plancha alta, lleva las rodillas al pecho alternando rápido. Combina core y cardio.", muscles:["Core","Flexores de cadera","Hombros"], videoUrl:"https://www.youtube.com/results?search_query=mountain+climbers+tecnica+correcta" },
+    ]
+  },
+];
+
+// day-of-week → workout (1=Mon...5=Fri, 0=Sun, 6=Sat)
+const DOW_TO_WORKOUT = { 1: WORKOUT_DAYS[0], 2: WORKOUT_DAYS[1], 3: WORKOUT_DAYS[2], 4: WORKOUT_DAYS[3], 5: WORKOUT_DAYS[4] };
+
+const MEASURE_FIELDS = [
+  { key:'peso', label:'Peso', unit:'kg', emoji:'⚖️' },
+  { key:'cintura', label:'Cintura', unit:'cm', emoji:'📏' },
+  { key:'cadera', label:'Cadera', unit:'cm', emoji:'📏' },
+  { key:'abdomen', label:'Abdomen', unit:'cm', emoji:'📏' },
+  { key:'muslos', label:'Muslos', unit:'cm', emoji:'📏' },
+  { key:'brazos', label:'Brazos', unit:'cm', emoji:'💪' },
+];
+
+// ══════════════════════════════════════════
+// STATE & STORAGE
+// ══════════════════════════════════════════
+let currentMonth = new Date().getMonth();
+let currentYear = new Date().getFullYear();
+let activeWorkoutDate = null; // "YYYY-MM-DD"
+let activeMeasureDate = null;
+
+function key(date) { return 'w_' + date; }
+function mKey(date) { return 'm_' + date; }
+
+function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+function load(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e) { return null; } }
+
+function dateStr(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function today() { const n = new Date(); return dateStr(n.getFullYear(), n.getMonth(), n.getDate()); }
+
+// ══════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  document.getElementById('nav-' + id).classList.add('active');
+  if (id === 'hist') renderHistory();
+  if (id === 'stats') renderStats();
+}
+
+// ══════════════════════════════════════════
+// CALENDAR
+// ══════════════════════════════════════════
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function changeMonth(dir) {
+  currentMonth += dir;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  document.getElementById('month-name').textContent = MONTHS_ES[currentMonth] + ' ' + currentYear;
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const todayStr = today();
+
+  // empty cells
+  for (let i = 0; i < firstDay; i++) {
+    const empty = document.createElement('div');
+    empty.className = 'cal-day';
+    grid.appendChild(empty);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = dateStr(currentYear, currentMonth, d);
+    const date = new Date(currentYear, currentMonth, d);
+    const dow = date.getDay(); // 0=Sun,1=Mon,...,6=Sat
+    const isWeekend = dow === 0 || dow === 6;
+    const workout = DOW_TO_WORKOUT[dow];
+    const isDone = !!load(key(ds));
+    const hasMeasure = !!load(mKey(ds));
+
+    const cell = document.createElement('div');
+    cell.className = 'cal-day';
+    if (ds === todayStr) cell.classList.add('today');
+    if (isDone) cell.classList.add('done');
+
+    let dotColor = '';
+    if (workout) {
+      cell.classList.add('has-workout');
+      dotColor = workout.color;
+    } else if (isWeekend) {
+      cell.classList.add('weekend-measure');
+      dotColor = hasMeasure ? '#6ee7b7' : '#334155';
+    }
+
+    cell.innerHTML = `<span class="day-num">${d}</span><div class="day-dot" style="background:${dotColor}"></div>`;
+
+    if (workout || isWeekend) {
+      cell.style.cursor = 'pointer';
+      cell.onclick = () => openDay(ds, dow, workout, isWeekend);
+      if (isDone) {
+        cell.style.background = workout ? workout.color + '18' : 'transparent';
+        cell.style.borderColor = workout ? workout.color + '44' : 'transparent';
+      }
+    }
+
+    grid.appendChild(cell);
+  }
+}
+
+function openDay(ds, dow, workout, isWeekend) {
+  if (workout) openWorkoutModal(ds, workout);
+  else if (isWeekend) openMeasuresModal(ds);
+}
+
+// ══════════════════════════════════════════
+// WORKOUT MODAL
+// ══════════════════════════════════════════
+function openWorkoutModal(ds, workout) {
+  activeWorkoutDate = ds;
+  document.getElementById('wm-title').textContent = workout.day + ' — ' + workout.title;
+  document.getElementById('wm-subtitle').textContent = workout.subtitle;
+  const doneBtn = document.getElementById('wm-done-btn');
+  doneBtn.style.background = workout.gradient;
+  doneBtn.style.color = '#fff';
+
+  const saved = load(key(ds)) || {};
+  let html = '';
+  let lastCat = '';
+  workout.exercises.forEach(ex => {
+    if (ex.category !== lastCat) {
+      html += `<div class="cat-label">${ex.category}</div>`;
+      lastCat = ex.category;
+    }
+    const sets = [];
+    for (let s = 1; s <= ex.sets; s++) {
+      const val = saved[ex.id] && saved[ex.id][s] ? saved[ex.id][s] : '';
+      sets.push(`<div class="set-input-wrap"><div class="set-num">S${s}</div><input class="set-input" type="number" inputmode="numeric" placeholder="${ex.reps}" value="${val}" onchange="logSet('${ex.id}',${s},this.value)"></div>`);
+    }
+    html += `
+    <div class="exercise-card">
+      <div class="ex-top">
+        <div>
+          <div class="ex-name">${ex.name}</div>
+          <div class="ex-equip">🏋️ ${ex.equipment}</div>
+        </div>
+        <div class="ex-meta">
+          <div class="ex-sets">${ex.sets}</div>
+          <div class="ex-reps">series</div>
+        </div>
+      </div>
+      <div class="ex-tip">💡 ${ex.tip}</div>
+      <div class="ex-muscles">${ex.muscles.map(m=>`<span class="muscle-tag">${m}</span>`).join('')}</div>
+      <div class="ex-log">
+        <div class="ex-log-title">Reps / Tiempo por serie</div>
+        <div class="sets-log">${sets.join('')}</div>
+      </div>
+      <a class="video-link" href="${ex.videoUrl}" target="_blank" rel="noopener">▶ Ver técnica en YouTube</a>
+    </div>`;
+  });
+
+  document.getElementById('wm-body').innerHTML = html;
+  document.getElementById('workout-modal').classList.add('open');
+}
+
+let pendingLogs = {};
+function logSet(exId, setNum, value) {
+  if (!pendingLogs[exId]) pendingLogs[exId] = {};
+  pendingLogs[exId][setNum] = value;
+  // auto-save
+  const existing = load(key(activeWorkoutDate)) || {};
+  if (!existing[exId]) existing[exId] = {};
+  existing[exId][setNum] = value;
+  save(key(activeWorkoutDate), existing);
+}
+
+function markWorkoutDone() {
+  const existing = load(key(activeWorkoutDate)) || {};
+  existing._done = true;
+  existing._ts = Date.now();
+  save(key(activeWorkoutDate), existing);
+  closeModal('workout-modal');
+  renderCalendar();
+}
+
+// ══════════════════════════════════════════
+// MEASURES MODAL
+// ══════════════════════════════════════════
+function openMeasuresModal(ds) {
+  activeMeasureDate = ds;
+  const saved = load(mKey(ds)) || {};
+  const d = new Date(ds + 'T00:00:00');
+  const dayName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
+  document.getElementById('mm-subtitle').textContent = dayName + ', ' + d.getDate() + ' de ' + MONTHS_ES[d.getMonth()];
+
+  let html = '';
+  MEASURE_FIELDS.forEach(f => {
+    const val = saved[f.key] || '';
+    html += `<div class="measure-row">
+      <div class="measure-label">${f.emoji} ${f.label}</div>
+      <div class="measure-unit">${f.unit}</div>
+      <input class="measure-input" type="number" inputmode="decimal" step="0.1" placeholder="—" value="${val}" id="mf-${f.key}">
+    </div>`;
+  });
+
+  document.getElementById('mm-form').innerHTML = html;
+  document.getElementById('measures-modal').classList.add('open');
+}
+
+function saveMeasures() {
+  const data = { _ts: Date.now() };
+  MEASURE_FIELDS.forEach(f => {
+    const el = document.getElementById('mf-' + f.key);
+    if (el && el.value) data[f.key] = parseFloat(el.value);
+  });
+  save(mKey(activeMeasureDate), data);
+  closeModal('measures-modal');
+  renderCalendar();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  pendingLogs = {};
+}
+
+// Close on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ══════════════════════════════════════════
+// HISTORY
+// ══════════════════════════════════════════
+function renderHistory() {
+  const content = document.getElementById('hist-content');
+  // collect all stored workout keys
+  const entries = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('w_')) {
+      const ds = k.slice(2);
+      const data = load(k);
+      if (data && data._done) {
+        const d = new Date(ds + 'T00:00:00');
+        const dow = d.getDay();
+        const workout = DOW_TO_WORKOUT[dow];
+        entries.push({ ds, data, workout, d });
+      }
+    }
+  }
+  entries.sort((a,b) => b.ds.localeCompare(a.ds));
+
+  if (entries.length === 0) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Aún no tienes entrenamientos guardados.<br>¡Completa tu primer día!</div></div>`;
+    return;
+  }
+
+  // group by month
+  const byMonth = {};
+  entries.forEach(e => {
+    const mk = `${e.d.getFullYear()}-${e.d.getMonth()}`;
+    if (!byMonth[mk]) byMonth[mk] = { label: MONTHS_ES[e.d.getMonth()] + ' ' + e.d.getFullYear(), items: [] };
+    byMonth[mk].items.push(e);
+  });
+
+  let html = '<div class="hist-section">';
+  Object.keys(byMonth).sort((a,b) => b.localeCompare(a)).forEach(mk => {
+    const grp = byMonth[mk];
+    html += `<div class="hist-month-label">${grp.label}</div>`;
+    grp.items.forEach(e => {
+      const w = e.workout;
+      const exCount = w ? w.exercises.length : 0;
+      const dayName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][e.d.getDay()];
+      const color = w ? w.color : '#6ee7b7';
+      const title = w ? w.title : '?';
+      const subtitle = w ? w.subtitle : '';
+      const loggedSets = w ? w.exercises.filter(ex => e.data[ex.id] && Object.keys(e.data[ex.id]).length > 0).length : 0;
+      html += `<div class="hist-card" onclick="openHistDetail('${e.ds}')">
+        <div class="hist-color" style="background:${color}"></div>
+        <div class="hist-info">
+          <div class="hist-date">${dayName} ${e.d.getDate()} ${MONTHS_ES[e.d.getMonth()]}</div>
+          <div class="hist-name">${title}</div>
+          <div class="hist-detail">${loggedSets}/${exCount} ejercicios registrados</div>
+        </div>
+        <div class="hist-arrow">›</div>
+      </div>`;
+    });
+  });
+  html += '</div>';
+  content.innerHTML = html;
+}
+
+function openHistDetail(ds) {
+  const data = load(key(ds));
+  const d = new Date(ds + 'T00:00:00');
+  const dow = d.getDay();
+  const workout = DOW_TO_WORKOUT[dow];
+  if (!workout) return;
+  const dayName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
+
+  document.getElementById('hm-title').textContent = workout.day + ' — ' + workout.title;
+  document.getElementById('hm-subtitle').textContent = dayName + ' ' + d.getDate() + ' de ' + MONTHS_ES[d.getMonth()];
+
+  let html = '';
+  let lastCat = '';
+  workout.exercises.forEach(ex => {
+    if (ex.category !== lastCat) {
+      html += `<div class="cat-label">${ex.category}</div>`;
+      lastCat = ex.category;
+    }
+    const exData = data && data[ex.id] ? data[ex.id] : {};
+    const setsHtml = Array.from({length: ex.sets}, (_,i) => {
+      const v = exData[i+1] || '—';
+      return `<div class="set-input-wrap"><div class="set-num">S${i+1}</div><div class="set-input" style="display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--bg);border-color:${v !== '—' ? '#ffffff33' : 'var(--border)'}">${v}</div></div>`;
+    }).join('');
+    html += `<div class="exercise-card">
+      <div class="ex-top">
+        <div><div class="ex-name">${ex.name}</div><div class="ex-equip">🏋️ ${ex.equipment}</div></div>
+        <div class="ex-meta"><div class="ex-sets">${ex.sets}</div><div class="ex-reps">series</div></div>
+      </div>
+      <div class="ex-log" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div class="ex-log-title">Reps registradas</div>
+        <div class="sets-log">${setsHtml}</div>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('hm-body').innerHTML = html;
+  document.getElementById('hist-modal').classList.add('open');
+}
+
+// ══════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════
+function renderStats() {
+  // Count workouts
+  let totalWorkouts = 0;
+  let streak = 0;
+  const allDone = new Set();
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('w_')) {
+      const data = load(k);
+      if (data && data._done) { totalWorkouts++; allDone.add(k.slice(2)); }
+    }
+  }
+
+  // Calculate streak (consecutive days with workout)
+  const todayStr = today();
+  let checkDate = new Date();
+  let s = 0;
+  while (true) {
+    const ds = dateStr(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate());
+    const dow = checkDate.getDay();
+    if (dow === 0 || dow === 6 || !DOW_TO_WORKOUT[dow]) { checkDate.setDate(checkDate.getDate() - 1); if(s > 0) break; continue; }
+    if (allDone.has(ds)) { s++; checkDate.setDate(checkDate.getDate() - 1); }
+    else break;
+  }
+  streak = s;
+
+  // Measures
+  const measures = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('m_')) {
+      const data = load(k);
+      if (data) measures.push({ ds: k.slice(2), ...data });
+    }
+  }
+  measures.sort((a,b) => b.ds.localeCompare(a.ds));
+
+  const latest = measures[0] || {};
+  const prev = measures[1] || {};
+
+  function trend(key) {
+    if (!latest[key] || !prev[key]) return '';
+    const diff = (latest[key] - prev[key]).toFixed(1);
+    if (diff > 0) return `<div class="stat-trend up">▲ +${diff} desde la semana pasada</div>`;
+    if (diff < 0) return `<div class="stat-trend down">▼ ${diff} desde la semana pasada</div>`;
+    return `<div class="stat-trend">Sin cambio</div>`;
+  }
+
+  let html = '';
+
+  // Streak banner
+  if (streak > 0) {
+    html += `<div class="streak-banner"><div class="streak-fire">🔥</div><div><div class="streak-num">${streak}</div><div class="streak-text">días seguidos de entrenamiento</div></div></div>`;
+  }
+
+  // Stats grid
+  html += `<div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Entrenos totales</div>
+      <div class="stat-value">${totalWorkouts}</div>
+      <div class="stat-trend">sesiones completadas</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Registros de medidas</div>
+      <div class="stat-value">${measures.length}</div>
+      <div class="stat-trend">semanas medidas</div>
+    </div>`;
+
+  if (latest.peso) {
+    html += `<div class="stat-card">
+      <div class="stat-label">Peso actual</div>
+      <div class="stat-value">${latest.peso}<span class="stat-unit">kg</span></div>
+      ${trend('peso')}
+    </div>`;
+  }
+  if (latest.cintura) {
+    html += `<div class="stat-card">
+      <div class="stat-label">Cintura</div>
+      <div class="stat-value">${latest.cintura}<span class="stat-unit">cm</span></div>
+      ${trend('cintura')}
+    </div>`;
+  }
+  html += '</div>';
+
+  // Measures history
+  if (measures.length > 0) {
+    html += `<div class="measure-history"><div class="measure-hist-title">Historial de medidas</div>`;
+    measures.slice(0, 12).forEach(m => {
+      const d = new Date(m.ds + 'T00:00:00');
+      const dayName = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d.getDay()];
+      html += `<div class="measure-hist-row">
+        <div class="measure-hist-date">${dayName} ${d.getDate()} ${MONTHS_ES[d.getMonth()]} ${d.getFullYear()}</div>
+        <div class="measure-hist-grid">`;
+      MEASURE_FIELDS.forEach(f => {
+        if (m[f.key]) html += `<div class="measure-hist-item"><div class="measure-hist-label">${f.label}</div><div class="measure-hist-val">${m[f.key]}<span style="font-size:11px;color:var(--text3);font-weight:400"> ${f.unit}</span></div></div>`;
+      });
+      html += `</div></div>`;
+    });
+    html += '</div>';
+  } else {
+    html += `<div class="empty-state"><div class="empty-icon">📏</div><div class="empty-text">Aún no hay medidas guardadas.<br>Toca un fin de semana para registrarlas.</div></div>`;
+  }
+
+  document.getElementById('stats-content').innerHTML = html;
+}
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+renderCalendar();
+</script>
+</body>
+</html>
